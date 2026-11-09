@@ -1,0 +1,77 @@
+.thought-level-slider {
+  --thought-accent: var(--color-blue-500);
+  --thought-label: var(--color-blue-500);
+}
+
+.thought-level-slider[data-highest="true"] {
+  --thought-accent: var(--color-purple-500);
+  --thought-label: var(--color-purple-500);
+}
+
+.thought-level-slider[data-disabled="true"] {
+  opacity: 0.5;
+}
+
+.thought-level-range {
+  /* 用户定版：常规白→蓝渐变；拉到最高档切换紫→白。 */
+  background: linear-gradient(90deg, var(--color-white) 0%, var(--thought-accent) 100%);
+  overflow: hidden;
+}
+
+.thought-level-range::before,
+.thought-level-range::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 23% 38%, rgb(255 255 255 / 85%) 0 1px, transparent 2px),
+    radial-gradient(circle at 53% 66%, rgb(255 255 255 / 65%) 0 0.75px, transparent 1.75px),
+    radial-gradient(circle at 81% 33%, rgb(255 255 255 / 75%) 0 1px, transparent 2px);
+  animation: thought-particles-drift 0.5s linear infinite;
+}
+
+.thought-level-range::after {
+  background:
+    radial-gradient(circle at 35% 65%, rgb(255 255 255 / 65%) 0 0.75px, transparent 1.75px),
+    radial-gradient(circle at 72% 45%, rgb(255 255 255 / 80%) 0 1px, transparent 2px);
+  animation-duration: 0.75s;
+  animation-delay: -0.325s;
+}
+
+/* 用户定版：拉到最高档粒子加速。 */
+.thought-level-slider[data-highest="true"] .thought-level-range::before {
+  animation-duration: 0.25s;
+}
+
+.thought-level-slider[data-highest="true"] .thought-level-range::after {
+  animation-duration: 0.38s;
+  animation-delay: -0.16s;
+}
+
+@keyframes thought-particles-drift {
+  0% {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+  20%,
+  75% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(-12px);
+    opacity: 0;
+  }
+}
+
+.thought-level-slider[data-disabled] .thought-level-range::before,
+.thought-level-slider[data-disabled] .thought-level-range::after {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thought-level-range::before,
+  .thought-level-range::after {
+    display: none;
+  }
+}

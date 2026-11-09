@@ -474,6 +474,8 @@ export interface ConversationComposerProps {
    * 竖切多 pane 时由宿主传入 SessionPane.focused，仅焦点 pane 聚焦、后台 pane 不抢焦点。
    */
   autoFocusEnabled?: boolean;
+  /** 由 SessionPane 下发（仅主 pane 开启）：把供应商徽章投影到侧边栏槽位。 */
+  projectProviderBadge?: boolean;
   /** 当前 composer 是否运行在手机 Web 远控壳中。 */
   isWebRemoteControl?: boolean;
   workspacePath: string;
@@ -601,6 +603,7 @@ function ConversationComposerImpl({
   highspeedActivationCardId = null,
   onHighspeedActivationApplied,
   autoFocusEnabled = true,
+  projectProviderBadge = false,
   isWebRemoteControl = false,
   workspacePath,
   workspaceIdentity,
@@ -2517,6 +2520,7 @@ function ConversationComposerImpl({
             <V4ComposerModelControls
               workspacePath={workspacePath}
               workspaceIdentity={workspaceIdentity}
+              projectProviderBadge={projectProviderBadge}
               modelSelectionView={modelSelectionView}
               modelSelectionState={modelSelectionState}
               modelSelectionReload={modelSelectionReload}

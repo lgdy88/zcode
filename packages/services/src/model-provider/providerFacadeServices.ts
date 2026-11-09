@@ -19,6 +19,11 @@ import {
 import { createServiceDescriptor } from "../descriptors.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
+import type { ProviderUsageOperations } from "./providerUsage.js";
+import type {
+  ProviderModelDiscoveryFetcher,
+  ProviderModelDiscoveryResult,
+} from "@zcode/provider";
 
 export type {
   ProviderSettingsProviderView,
@@ -27,7 +32,7 @@ export type {
   ProviderSettingsView,
 } from "@zcode/provider";
 
-export interface IProviderSettingsService {
+export interface IProviderSettingsService extends ProviderUsageOperations {
   readonly onDidChange: Event<ProviderSettingsView>;
   getView(): Promise<ProviderSettingsView>;
   refresh(reason: string): Promise<ProviderSettingsView>;
@@ -35,6 +40,8 @@ export interface IProviderSettingsService {
     input?: Parameters<ProviderSettingsFacade["createPersonalProvider"]>[0],
   ): Promise<ProviderSettingsCreationResult>;
   resolveModelConfig(input: ResolveModelConfigInput): Promise<ModelConfigResolution>;
+  /** 只读当前供应商目录，不创建或覆盖模型配置。 */
+  fetchAvailableModels(providerId: ProviderId): Promise<ProviderModelDiscoveryResult>;
   savePersonalProviderOverlay(
     providerId: ProviderId,
     config: ProviderConfigObject,
@@ -110,8 +117,22 @@ export function createProviderSettingsService(
   facade: ProviderSettingsFacade,
   ensureReady: () => Promise<void> = async () => {},
   testConnectivity?: ProviderSettingsConnectivityTester,
+  usage?: ProviderUsageOperations & {
+    removeProviderUsage?: (providerId: string) => Promise<void>;
+  },
+  fetchModels?: ProviderModelDiscoveryFetcher,
 ): IProviderSettingsService {
+  const requireUsage = () => {
+    if (!usage) throw new Error("当前环境未装配供应商用量查询");
+    return usage;
+  };
   return {
+    onDidChangeUsage: usage?.onDidChangeUsage ?? (() => ({ dispose() {} })),
+    getProviderUsage: (id) => requireUsage().getProviderUsage(id),
+    readProviderUsageSecret: (input) => requireUsage().readProviderUsageSecret(input),
+    saveProviderUsage: (input) => requireUsage().saveProviderUsage(input),
+    queryProviderUsage: (id, automatic) => requireUsage().queryProviderUsage(id, automatic),
+    testProviderUsage: (input) => requireUsage().testProviderUsage(input),
     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
     getView: async () => {
       await ensureReady();
@@ -129,13 +150,48 @@ export function createProviderSettingsService(
       await ensureReady();
       return facade.resolveModelConfig(input);
     },
+    fetchAvailableModels: async (providerId) => {
+      await ensureReady();
+      await facade.waitForProviderOperations(providerId);
+      const provider = facade.getView().providers.find((item) => item.providerId === providerId);
+      if (!provider) return { success: false, error: { code: "provider-unavailable" } };
+      if (provider.effectiveConfig.access?.type === "zhipu-account") {
+        // 账号模型目录由内置配置与套餐白名单拥有，沿原刷新链路读取，不能拿账号凭据探测 /models。
+        const view = await facade.refresh("model-discovery");
+        const current = view.providers.find((item) => item.providerId === providerId);
+        if (!current) return { success: false, error: { code: "provider-unavailable" } };
+        if (
+          current.accountState?.connectionKey !== provider.accountState?.connectionKey ||
+          current.effectiveConfig.access?.type !== "zhipu-account"
+        )
+          return { success: false, error: { code: "connection-changed" } };
+        if (current.accountState?.availability === "unknown")
+          return { success: false, error: { code: "network" } };
+        if (
+          current.accountState?.availability !== "available" &&
+          current.accountState?.availability !== "pending"
+        )
+          return { success: false, error: { code: "provider-unavailable" } };
+        return {
+          success: true,
+          models: [...new Set(current.effectiveConfig.builtinModelIds ?? [])]
+            .sort((a, b) => a.localeCompare(b))
+            .map((id) => ({ id })),
+        };
+      }
+      if (!fetchModels) return { success: false, error: { code: "unsupported-provider" } };
+      return fetchModels(provider.effectiveConfig, providerId);
+    },
     savePersonalProviderOverlay: async (providerId, config, metadata) => {
       await ensureReady();
       return facade.savePersonalProviderOverlay(providerId, config, metadata);
     },
     deletePersonalProvider: async (providerId) => {
       await ensureReady();
-      return facade.deletePersonalProvider(providerId);
+      const view = await facade.deletePersonalProvider(providerId);
+      // Provider ID 可能再次分配，删除成功后清理独立查询凭据，避免新供应商继承旧账户查询。
+      await usage?.removeProviderUsage?.(providerId);
+      return view;
     },
     reorderPersonalProviders: async (providerIds) => {
       await ensureReady();

@@ -24,6 +24,11 @@ import {
   type ModelSelectionConfiguredDefaultSource,
   type ProviderSettingsConnectivityTester,
 } from "./providerFacadeServices.js";
+import {
+  ProviderUsageService,
+  type ProviderUsageServiceOptions,
+} from "./providerUsageService.js";
+import type { ProviderModelDiscoveryFetcher } from "@zcode/provider";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 
 const log = createServiceLogger("provider-runtime");
@@ -31,6 +36,10 @@ const log = createServiceLogger("provider-runtime");
 export interface ProviderRuntimeOptions extends ProviderConfigRuntimeOptions {
   readonly accountSource?: RefreshableProviderSource<AccountProviderConfigSnapshot>;
   readonly testConnectivity?: ProviderSettingsConnectivityTester;
+  /** 自定义供应商用量查询（provider-usage-config.json）；缺省不装配，UI 侧入口自动隐藏。 */
+  readonly providerUsage?: Pick<ProviderUsageServiceOptions, "configFilePath" | "fetchImpl">;
+  /** 自定义供应商「获取模型列表」探测器；缺省时该入口返回 unsupported-provider。 */
+  readonly fetchModels?: ProviderModelDiscoveryFetcher;
 }
 
 export interface ProviderRuntimeDependencies {
@@ -38,6 +47,8 @@ export interface ProviderRuntimeDependencies {
   readonly accountSource?: RefreshableProviderSource<AccountProviderConfigSnapshot>;
   readonly disposeAccountSource?: () => void;
   readonly testConnectivity?: ProviderSettingsConnectivityTester;
+  readonly providerUsage?: Pick<ProviderUsageServiceOptions, "configFilePath" | "fetchImpl">;
+  readonly fetchModels?: ProviderModelDiscoveryFetcher;
   readonly modelSelectionConfiguredDefaultSource?: ModelSelectionConfiguredDefaultSource;
   readonly disposeModelSelectionConfiguredDefaultSource?: () => void;
 }
@@ -73,6 +84,8 @@ export class ProviderRuntime {
   readonly #disposeBuiltinRecovery: () => void;
   readonly #modelSelectionRuntime: IModelSelectionService & { dispose(): void };
   readonly #disposeModelSelectionConfiguredDefaultSource?: () => void;
+  readonly #providerUsage?: ProviderUsageService;
+  readonly #disposeUsageChanges?: () => void;
   #startPromise: ReturnType<ProviderRegistryService["start"]> | null = null;
   #disposed = false;
 
@@ -104,10 +117,29 @@ export class ProviderRuntime {
     );
     const ensureReady = () => this.start();
     const settingsFacade = new ProviderSettingsFacade(this.registryService, mutations);
+    this.#providerUsage = dependencies.providerUsage
+      ? new ProviderUsageService({
+          ...dependencies.providerUsage,
+          resolveProvider: async (id) => {
+            await ensureReady();
+            const provider = settingsFacade
+              .getView()
+              .providers.find((candidate) => candidate.providerId === id);
+            return provider
+              ? { config: provider.effectiveConfig, enabled: provider.enabled }
+              : undefined;
+          },
+        })
+      : undefined;
+    this.#disposeUsageChanges = settingsFacade.onDidChange(() => {
+      this.#providerUsage?.refreshAutomaticQueries();
+    });
     this.providerSettings = createProviderSettingsService(
       settingsFacade,
       ensureReady,
       dependencies.testConnectivity,
+      this.#providerUsage,
+      dependencies.fetchModels,
     );
     this.#modelSelectionRuntime = createModelSelectionService(
       createNodeModelSelectionFacade(this.registryService),
@@ -122,6 +154,11 @@ export class ProviderRuntime {
     if (this.#startPromise) return this.#startPromise;
     const startPromise = this.#configRuntime.start().then(() => this.registryService.start());
     this.#startPromise = startPromise;
+    void startPromise.then(() => {
+      if (!this.#disposed) {
+        this.#providerUsage?.startAutomaticRefresh();
+      }
+    });
     void startPromise.catch(() => {
       if (this.#startPromise === startPromise) this.#startPromise = null;
     });
@@ -136,6 +173,8 @@ export class ProviderRuntime {
     this.registryService.dispose();
     this.#disposeAccountSource?.();
     this.#disposeModelSelectionConfiguredDefaultSource?.();
+    this.#disposeUsageChanges?.();
+    this.#providerUsage?.dispose();
     this.#configRuntime.dispose();
   }
 }
@@ -202,7 +241,7 @@ function createSettingsMutationTarget(
 }
 
 export function createProviderRuntime(options: ProviderRuntimeOptions): ProviderRuntime {
-  const { accountSource, testConnectivity, ...configRuntimeOptions } = options;
+  const { accountSource, testConnectivity, providerUsage, fetchModels, ...configRuntimeOptions } = options;
   const configRuntime = createProviderConfigRuntime(configRuntimeOptions);
   const modelSelectionConfiguredDefaultSource = new NodeModelSelectionConfigRepository({
     personalRepository: configRuntime.personalRepository,
@@ -211,6 +250,8 @@ export function createProviderRuntime(options: ProviderRuntimeOptions): Provider
     configRuntime,
     accountSource,
     testConnectivity,
+    providerUsage,
+    fetchModels,
     modelSelectionConfiguredDefaultSource,
     disposeModelSelectionConfiguredDefaultSource: () =>
       modelSelectionConfiguredDefaultSource.dispose(),

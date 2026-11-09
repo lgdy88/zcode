@@ -199,6 +199,7 @@ export function V4ChatPane({
         onConversationFindMatchStateChange={onConversationFindMatchStateChange}
         searchResultHighlightRequest={searchResultHighlightRequest}
         onSearchResultHighlightDone={onSearchResultHighlightDone}
+        projectProviderBadge
       />
     </V4ConversationProvider>
   );

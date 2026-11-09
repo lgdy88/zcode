@@ -42,6 +42,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { setSidebarProviderSlotElement } from "@/app-shell/SidebarProviderSlotStore.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
 import { useOpenRewards } from "@/rewards/RewardsProvider.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -466,6 +467,15 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex shrink-0 items-center gap-1.5">
+          {/* 供应商徽章投影槽位：composer 工具栏通过 portal 填充（SidebarProviderSlotStore）。
+              Settings 复用 footer（mode="back"）时没有 composer，不渲染，避免留空位。 */}
+          {settingsButtonMode === "settings" ? (
+            <div
+              ref={setSidebarProviderSlotElement}
+              data-testid="activity-provider-slot"
+              className="flex size-9 items-center justify-center"
+            />
+          ) : null}
           {isDesktop && workspacePath ? (
             <WorkspaceWebRemoteControlTrigger
               workspacePath={workspacePath}

@@ -10,6 +10,9 @@ import type {
   ProviderSettingsFormProvider,
   ProviderSettingsFormModel,
 } from "@/lib/providerSettingsFormTypes.js";
+import { getProviderFormApiKey } from "@/lib/providerSettingsFormTypes.js";
+import { ProviderModelDiscoveryButton } from "./ProviderModelDiscoveryButton.js";
+import { ProviderUsageSection } from "./ProviderUsageSection.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
 import type { ProviderApiType } from "@zcode/provider";
 import {
@@ -183,6 +186,7 @@ export function ProviderCardHeader({
 
 export function ProviderConnectionSection({
   provider,
+  onBeforeUsageQuery,
   readOnly,
   apiFormat,
   baseUrlValue,
@@ -194,6 +198,8 @@ export function ProviderConnectionSection({
   onBaseUrlCompositionEnd,
 }: {
   provider: ProviderSettingsFormProvider;
+  /** 传入即挂载用量查询区（自定义 Key 供应商）；查询前先落盘未保存草稿。 */
+  onBeforeUsageQuery?: () => Promise<void>;
   readOnly?: boolean;
   apiFormat: ProviderApiType;
   baseUrlValue: string;
@@ -207,6 +213,19 @@ export function ProviderConnectionSection({
   const { intl } = useZCodeIntl();
   const showApiFormat = shouldShowProviderApiFormat(provider);
   const readOnlyBaseUrl = provider.config.api?.baseUrl ?? "";
+  const usageSection = onBeforeUsageQuery ? (
+    <ProviderUsageSection
+      key={provider.providerId}
+      providerId={provider.providerId}
+      connectionKey={JSON.stringify([
+        baseUrlValue,
+        apiFormat,
+        getProviderFormApiKey(provider),
+        provider.config.api?.headers,
+      ])}
+      beforeQuery={onBeforeUsageQuery}
+    />
+  ) : null;
   const resolvedApiFormat = provider.config.api?.type ?? "anthropic-messages";
 
   const renderReadOnlyField = (label: string, value: string) => (
@@ -231,6 +250,7 @@ export function ProviderConnectionSection({
   if (readOnly) {
     return (
       <>
+        {usageSection}
         {renderReadOnlyField(
           intl.formatMessage({ id: "settings.modelProvider.baseUrl" }),
           readOnlyBaseUrl,
@@ -247,6 +267,7 @@ export function ProviderConnectionSection({
 
   return (
     <>
+      {usageSection}
       <div>
         <label className="mb-1 block text-ui-base text-foreground-subtle">
           {intl.formatMessage({ id: "settings.modelProvider.baseUrl" })}
@@ -360,6 +381,8 @@ export function ProviderModelsSection({
   onAddModel,
   onReorderModelIds,
   settingsRevision = 0,
+  discoveryConnectionKey,
+  onBeforeFetchModels,
 }: {
   providerId: string;
   providerName?: string;
@@ -377,6 +400,10 @@ export function ProviderModelsSection({
   onAddModel: (model: ProviderSettingsFormModel) => void | Promise<void>;
   onReorderModelIds?: (modelIds: string[]) => void;
   settingsRevision?: number;
+  /** 连接指纹：获取模型列表的缓存与换代判断键。 */
+  discoveryConnectionKey?: string;
+  /** 拉取目录前先落盘未保存草稿，保证 Host 读到当前连接配置。 */
+  onBeforeFetchModels?: () => Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
   const { providerSettingsService } = useServices();
@@ -474,17 +501,35 @@ export function ProviderModelsSection({
         <span className="text-ui-base text-foreground-subtle">
           {intl.formatMessage({ id: "settings.modelProvider.models" })}
         </span>
-        <Button
-          type="button"
-          variant="secondary"
-          size="default"
-          className="rounded-lg"
-          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
-          onClick={openAddDialog}
-        >
-          <Plus data-icon="inline-start" aria-hidden="true" />
-          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ProviderModelDiscoveryButton
+            providerId={providerId}
+            providerName={providerName}
+            connectionKey={
+              discoveryConnectionKey ??
+              JSON.stringify([providerId, providerAccess?.type, providerEnabled])
+            }
+            existingModelIds={models.map((model) => model.modelId)}
+            beforeFetch={onBeforeFetchModels}
+            onSelectModels={async (ids) => {
+              // 批量添加走默认配置（模型 id 即目录 id）；细调档位/上下文在列表里逐个编辑。
+              for (const modelId of ids) {
+                await onAddModel({ ...createEmptyModel(), modelId });
+              }
+            }}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="default"
+            className="rounded-lg"
+            data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+            onClick={openAddDialog}
+          >
+            <Plus data-icon="inline-start" aria-hidden="true" />
+            {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+          </Button>
+        </div>
       </div>
       {models.length > 0 ? (
         <div className="overflow-hidden rounded-lg border border-input-border bg-input">

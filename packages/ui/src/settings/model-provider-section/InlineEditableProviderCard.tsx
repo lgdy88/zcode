@@ -811,6 +811,9 @@ export function InlineEditableProviderCard({
         {isAccountProvider ? null : (
           <ProviderConnectionSection
             provider={provider}
+            onBeforeUsageQuery={
+              isApiKeyProvider ? () => commitPendingDraft("provider-usage") : undefined
+            }
             readOnly={readOnlyEndpoints}
             apiFormat={apiFormat}
             baseUrlValue={baseUrlValue}
@@ -846,6 +849,15 @@ export function InlineEditableProviderCard({
           providerEnabled={provider.enabled}
           providerAccess={provider.config.access}
           models={models}
+          discoveryConnectionKey={JSON.stringify([
+            baseUrlValue,
+            apiFormat,
+            getProviderFormApiKey(provider),
+            provider.config.api?.headers,
+          ])}
+          onBeforeFetchModels={
+            isApiKeyProvider ? () => commitPendingDraft("provider-discovery") : undefined
+          }
           onTestModel={onTestModel ? handleTestModel : undefined}
           onModelCommit={handleModelCommit}
           onModelEnabledChange={handleModelEnabledChange}

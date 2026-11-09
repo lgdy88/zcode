@@ -406,6 +406,11 @@ export interface SessionPaneProps {
    * 只影响 foreground UI telemetry，不影响 live subscription 或后台 /event/report。
    */
   telemetryVisible?: boolean;
+  /**
+   * 是否把供应商徽章入口投影到侧边栏槽位（SidebarProviderSlotStore）。
+   * 仅主聊天 pane（V4ChatPane）开启；侧 pane / 隐藏 pane 关闭，避免多徽章叠加。
+   */
+  projectProviderBadge?: boolean;
   /** 关闭本窗格（仅非 primary pane 下发；关 pane ≠ 停 session）。 */
   onClosePane?: () => void;
   /** 跨 workspace pane 的归属徽标（pane workspace ≠ shell 当前 workspace 时下发）。 */
@@ -639,6 +644,7 @@ export function SessionPane({
   focused = true,
   allowEscapeStopOutsidePane = false,
   telemetryVisible = true,
+  projectProviderBadge = false,
   onClosePane,
   workspaceBadge,
   draftComposerHeader,
@@ -5681,6 +5687,11 @@ export function SessionPane({
       externalTextInsertRequest={focused && sessionId === null ? composerTextInsertRequest : null}
       onExternalTextInsertApplied={handleExternalTextInsertApplied}
       autoFocusEnabled={focused}
+      /* 主 pane 按 paneId 身份直判（桌面工作台分栏路径不经 V4ChatPane，prop 直传覆盖不到）；
+         显式 prop 仍是侧 pane 的关闭开关，隐藏 pane 不投影。 */
+      projectProviderBadge={
+        (paneId === "workspace-main" || projectProviderBadge) && focused && telemetryVisible
+      }
       disabled={
         connecting ||
         draftRuntimeRebuilding ||

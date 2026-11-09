@@ -39,6 +39,9 @@ import type {
   SessionUsageState,
 } from "@zcode/shared/zcode-protocol-v4";
 import { ModelConfigSelect, type ModelSelectGroup } from "@/ModelConfigSelect.js";
+import { ComposerModelPickers } from "@/v4/composer/ComposerModelPickers.js";
+import { addAutoModelItems, decodeAutoModelValue } from "@/v4/composer/autoModelSelection.js";
+import { resolveDefaultProviderSelection } from "@/lib/provider/defaultModelProvider.js";
 import type { ComposerModelOptions } from "@/chat-input-toolbar/ComposerModelMenu.js";
 import { Button } from "@/components/ui/button.js";
 import { HighspeedModelIndicator } from "@/highspeed/HighspeedModelIndicator.js";
@@ -435,6 +438,8 @@ export interface V4ComposerToolbarProps {
     value: string,
     sourceModel: ModelSelectionSource | null,
   ) => Promise<void> | void;
+  /** 把供应商徽章入口投影到侧边栏槽位（仅主 pane 的 SessionPane 下发）。 */
+  projectProviderBadge?: boolean;
   onSendCompressionCommand?: (command: string) => void;
 }
 
@@ -466,6 +471,7 @@ function V4ComposerModelControlsImpl({
   onSelectThought,
   onSendCompressionCommand,
   onRecoverCustomModelSelection,
+  projectProviderBadge = false,
 }: V4ComposerToolbarProps) {
   const { intl, locale } = useZCodeIntl();
   const { openCodingPlanUpgrade } = useCodingPlanUpgradeDialog();
@@ -878,8 +884,13 @@ function V4ComposerModelControlsImpl({
   );
   const modelSelectGroups = useMemo<ModelSelectGroup[]>(() => {
     if (!modelSelectionView) return [];
-    return buildRegistryModelSelectGroups(displayProvider, modelSelectionView, modelGroupLabels);
-  }, [displayProvider, modelGroupLabels, modelSelectionView]);
+    // RCode 形态：每个供应商分组顶部插入 Auto（自动择优）；提交时解析为该供应商默认可执行模型。
+    return addAutoModelItems(
+      buildRegistryModelSelectGroups(displayProvider, modelSelectionView, modelGroupLabels),
+      modelSelectionView,
+      intl.formatMessage({ id: "chat.toolbar.model.autoSelect" }),
+    );
+  }, [displayProvider, intl, modelGroupLabels, modelSelectionView]);
 
   // 修复：恢复「管理模型」入口（老版 onManageModels = 打开设置页并定位模型供应商区）。
   const handleOpenModelProviderSettings = useCallback(() => {
@@ -944,6 +955,14 @@ function V4ComposerModelControlsImpl({
   const handleModelValueChange = useCallback(
     (value: string, reasoningLevel?: string) => {
       if (modelLocked) return;
+      // Auto（自动择优）菜单值：选型时解析为该供应商默认可执行模型 + 其默认档位。
+      const autoProvider = decodeAutoModelValue(value);
+      if (autoProvider) {
+        const fallback = resolveDefaultProviderSelection(modelSelectionView, autoProvider);
+        if (!fallback) return;
+        value = encodeCustomModelValue(autoProvider, fallback.modelId);
+        reasoningLevel = fallback.options?.reasoningLevel;
+      }
       const decoded = decodeCustomModelValue(value);
       // 草稿的点击时可见模型可能只存在于 catalog，或已经被最新 draft
       // intent 覆盖，不能让 SessionPane 再从迟到的 prewarm projection 反推。
@@ -1320,70 +1339,56 @@ function V4ComposerModelControlsImpl({
           {manageModelsLabel}
         </Button>
       ) : modelMenuVisible ? (
-        <ModelConfigSelect
-          key={JSON.stringify([
-            workspaceIdentity?.trim() || workspacePath,
-            sessionId,
-            sessionConfigPending,
-          ])}
+        <ComposerModelPickers
+          providerId={effectiveConfig?.provider}
+          view={modelSelectionView}
+          entitlements={entitlements}
           modelGroups={modelSelectGroups}
-          contentAlign="center"
           normalizedValue={normalizedModelValue}
-          triggerLabel={
-            sessionConfigPending && !effectiveConfig?.model ? "" : modelTriggerDisplay.modelLabel
-          }
-          composerOptions={composerOptions}
-          showManageModelsAction={showManageModelsAction}
-          manageModelsLabel={manageModelsLabel}
+          triggerLabel={modelTriggerDisplay.fullLabel}
           onManageModels={handleOpenModelProviderSettings}
-          lockReasonMessage={intl.formatMessage({
-            id: modelLocked
-              ? "chat.highspeed.modelLocked"
-              : "chat.toolbar.modelSwitch.lockedByRunningTask",
-          })}
-          isItemLocked={isModelOptionLocked}
-          onValueChange={handleModelValueChange}
-          disabled={
-            disabled ||
-            recoveryPending ||
-            modelLocked ||
-            (modelSelectionState.status !== "ready" &&
-              !(modelSelectionState.status === "loading" && modelSelectionState.catalog))
-          }
-          tooltipTitle={modelTriggerDisplay.fullLabel}
-          shortcutLabel={modelShortcutLabel}
-          triggerRef={modelTriggerRef}
-          open={!modelLocked && activeConfigPicker === "model"}
-          onOpenChange={handleModelPickerOpenChange}
-          openRequestKey={modelMenuOpenRequestKey}
-          labelVisibilityClassName="hidden @sm/composer:inline-flex"
-          indicatorClassName="block group-data-[composer-model-icon=true]/toolbar:hidden"
-          triggerLabelClassName="block min-w-0 text-left group-data-[composer-model-icon=true]/toolbar:hidden [&>span]:max-w-full [&>span>span]:block [&>span>span]:truncate"
-          triggerClassName="composer-model-trigger group-data-[composer-model-icon=true]/toolbar:px-1.5 group-data-[composer-model-icon=true]/toolbar:justify-center"
-          triggerIconClassName="hidden group-data-[composer-model-icon=true]/toolbar:inline-flex"
-          focusSelectorOnClose={V4_COMPOSER_INPUT_SELECTOR}
-          providerSubmenuClassName={providerSubmenuClassName}
-        />
-      ) : null}
-      {highspeedPresented && highspeedExpiresAt !== undefined ? (
-        <HighspeedCountdown expiresAt={highspeedExpiresAt} />
-      ) : null}
-      {thoughtOption && (modelLocked || highspeedPresented) ? (
-        <ThoughtLevelCycleControl
-          composerCollapsePriority={3}
-          labelVisibilityClassName="inline-flex"
-          indicatorClassName="block"
-          triggerClassName={cn(highspeedPresented && "text-ui-caption")}
-          option={thoughtOption}
-          onValueChange={handleThoughtValueChange}
-          disabled={disabled || recoveryPending}
-          intl={intl}
-          provider={displayProvider}
-          shortcutLabel={thoughtShortcutLabel}
-          triggerRef={thoughtTriggerRef}
-          open={activeConfigPicker === "thought"}
-          onOpenChange={handleThoughtPickerOpenChange}
-          restoreFocusSelector={V4_COMPOSER_INPUT_SELECTOR}
+          thoughtProps={{
+            option: thoughtOption,
+            provider: displayProvider,
+            disabled: disabled || recoveryPending,
+            intl,
+            onValueChange: handleThoughtValueChange,
+            onOpenChange: handleThoughtPickerOpenChange,
+            triggerRef: thoughtTriggerRef,
+            open: activeConfigPicker === "thought",
+            composerCollapsePriority: 3,
+            restoreFocusSelector: V4_COMPOSER_INPUT_SELECTOR,
+            labelVisibilityClassName: "inline-flex",
+            indicatorClassName: "block",
+            triggerClassName: cn(highspeedPresented && "text-ui-caption"),
+            shortcutLabel: thoughtShortcutLabel,
+          }}
+          modelProps={{
+            modelGroups: modelSelectGroups,
+            normalizedValue: normalizedModelValue,
+            triggerLabel: modelTriggerDisplay.modelLabel,
+            triggerLabelValue: modelTriggerDisplay.modelLabel,
+            showManageModelsAction: showManageModelsAction,
+            manageModelsLabel: manageModelsLabel,
+            onManageModels: handleOpenModelProviderSettings,
+            shortcutLabel: modelShortcutLabel,
+            lockReasonMessage: intl.formatMessage({
+              id: modelLocked
+                ? "chat.highspeed.modelLocked"
+                : "chat.toolbar.modelSwitch.lockedByRunningTask",
+            }),
+            isItemLocked: isModelOptionLocked,
+            onValueChange: handleModelValueChange,
+            disabled:
+              disabled ||
+              recoveryPending ||
+              modelLocked ||
+              (modelSelectionState.status !== "ready" &&
+                !(modelSelectionState.status === "loading" && modelSelectionState.catalog)),
+            open: !modelLocked && activeConfigPicker === "model",
+            onOpenChange: handleModelPickerOpenChange,
+            openRequestKey: modelMenuOpenRequestKey,
+          }}
         />
       ) : null}
     </>

@@ -477,6 +477,7 @@ import { AccountProviderApiClient } from "./model-provider/accountProviderApiCli
 import { createAccountProjectTokenClient } from "./model-provider/accountProjectTokenClient.js";
 import { AccountProviderApiKeyResolver } from "./model-provider/accountProviderApiKeyResolver.js";
 import { createProviderConfigRuntime } from "./model-provider/providerConfigRuntime.js";
+import { createProviderModelDiscoveryFetcher } from "@zcode/provider-node";
 import { fetchZCodeBuiltinRemoteRelease } from "./model-provider/zcodeBuiltinRemoteConfig.js";
 import {
   createProviderRuntimeFromConfigRuntime,
@@ -1622,6 +1623,11 @@ export function createLocalServices(options: {
   const providerRuntime = createProviderRuntimeFromConfigRuntime({
     configRuntime: providerConfigRuntime,
     accountSource: accountProviderConfigSource,
+    providerUsage: {
+      configFilePath: join(resolveAppConfigDir(), "provider-usage-config.json"),
+      fetchImpl: hostApiNetworkTransport.fetch,
+    },
+    fetchModels: createProviderModelDiscoveryFetcher(hostApiNetworkTransport.fetch),
     modelSelectionConfiguredDefaultSource,
     disposeModelSelectionConfiguredDefaultSource: () =>
       modelSelectionConfiguredDefaultSource.dispose(),
