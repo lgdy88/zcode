@@ -19,7 +19,10 @@ import {
 } from "@/components/ui/command.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useProviderModelDiscovery } from "@/hooks/useProviderModelDiscovery.js";
-import type { DiscoveredProviderModel } from "@zcode/provider";
+import type {
+  DiscoveredProviderModel,
+  ModelReasoningMetadata,
+} from "@zcode/provider";
 
 export function ProviderModelDiscoveryButton({
   providerId,
@@ -35,8 +38,11 @@ export function ProviderModelDiscoveryButton({
   connectionKey: string;
   existingModelIds: readonly string[];
   beforeFetch?: () => Promise<void>;
-  /** 确认后批量添加；按选择顺序去重提交。 */
-  onSelectModels?: (ids: string[]) => void | Promise<void>;
+  /** 确认后批量添加；按选择顺序去重提交，附发现到的思考档位元数据。 */
+  onSelectModels?: (
+    ids: string[],
+    metadata: Readonly<Record<string, ModelReasoningMetadata | undefined>>,
+  ) => void | Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
   const discovery = useProviderModelDiscovery({ providerId, connectionKey, beforeFetch });
@@ -68,7 +74,13 @@ export function ProviderModelDiscoveryButton({
   };
   const confirm = () => {
     if (!selected.length || !onSelectModels) return;
-    void Promise.resolve(onSelectModels([...selected])).finally(() => close(false));
+    const modelsById = new Map(
+      (discovery.result?.success ? discovery.result.models : []).map((model) => [model.id, model]),
+    );
+    const metadata = Object.fromEntries(
+      selected.map((id) => [id, modelsById.get(id)?.reasoning]),
+    );
+    void Promise.resolve(onSelectModels([...selected], metadata)).finally(() => close(false));
   };
 
   return (

@@ -858,6 +858,7 @@ export function InlineEditableProviderCard({
           onBeforeFetchModels={
             isApiKeyProvider ? () => commitPendingDraft("provider-discovery") : undefined
           }
+          apiFormat={apiFormat}
           onTestModel={onTestModel ? handleTestModel : undefined}
           onModelCommit={handleModelCommit}
           onModelEnabledChange={handleModelEnabledChange}

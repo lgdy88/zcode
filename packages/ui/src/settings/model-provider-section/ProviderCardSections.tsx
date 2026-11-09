@@ -14,7 +14,11 @@ import { getProviderFormApiKey } from "@/lib/providerSettingsFormTypes.js";
 import { ProviderModelDiscoveryButton } from "./ProviderModelDiscoveryButton.js";
 import { ProviderUsageSection } from "./ProviderUsageSection.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
-import type { ProviderApiType } from "@zcode/provider";
+import {
+  compileReasoningMetadata,
+  type ModelReasoningMetadata,
+  type ProviderApiType,
+} from "@zcode/provider";
 import {
   TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
   TID_MODEL_PROVIDER_BASE_URL_INPUT,
@@ -383,6 +387,7 @@ export function ProviderModelsSection({
   settingsRevision = 0,
   discoveryConnectionKey,
   onBeforeFetchModels,
+  apiFormat,
 }: {
   providerId: string;
   providerName?: string;
@@ -404,6 +409,8 @@ export function ProviderModelsSection({
   discoveryConnectionKey?: string;
   /** 拉取目录前先落盘未保存草稿，保证 Host 读到当前连接配置。 */
   onBeforeFetchModels?: () => Promise<void>;
+  /** 当前 API 格式；发现到的思考档位按协议编译成 optionSpec 映射。 */
+  apiFormat?: ProviderApiType;
 }) {
   const { intl } = useZCodeIntl();
   const { providerSettingsService } = useServices();
@@ -511,10 +518,24 @@ export function ProviderModelsSection({
             }
             existingModelIds={models.map((model) => model.modelId)}
             beforeFetch={onBeforeFetchModels}
-            onSelectModels={async (ids) => {
-              // 批量添加走默认配置（模型 id 即目录 id）；细调档位/上下文在列表里逐个编辑。
+            onSelectModels={async (ids, metadata) => {
+              // 批量添加：发现到的思考档位直接编译进模型配置；细调在列表里逐个编辑。
               for (const modelId of ids) {
-                await onAddModel({ ...createEmptyModel(), modelId });
+                const empty = createEmptyModel();
+                const metadataForModel = metadata?.[modelId];
+                const spec =
+                  metadataForModel && apiFormat
+                    ? compileReasoningMetadata(metadataForModel, apiFormat, null)
+                    : null;
+                await onAddModel({
+                  ...empty,
+                  config: {
+                    ...empty.config,
+                    optionSpecs: spec
+                      ? { ...empty.config.optionSpecs, reasoningLevel: spec }
+                      : empty.config.optionSpecs,
+                  },
+                });
               }
             }}
           />
