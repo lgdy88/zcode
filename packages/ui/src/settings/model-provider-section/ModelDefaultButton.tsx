@@ -35,7 +35,7 @@ export function ModelDefaultButton({
       type="button"
       variant="ghost"
       size="sm"
-      className="h-6 shrink-0 px-1 text-ui-xs"
+      className="h-6 shrink-0 px-1 text-ui-xs opacity-0 group-hover/model:opacity-100 group-focus-within/model:opacity-100 max-md:size-7 max-md:p-0 max-md:opacity-100"
       data-testid={`set-default-model-${providerId}-${modelId}`}
       disabled={!actions.ready || !available || actions.savingProviderId !== null}
       aria-label={intl.formatMessage(

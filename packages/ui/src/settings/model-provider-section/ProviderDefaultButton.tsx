@@ -41,7 +41,7 @@ export function ProviderDefaultButton({
       type="button"
       variant="ghost"
       size="sm"
-      className="h-6 shrink-0 px-1 text-ui-xs"
+      className="invisible h-6 shrink-0 px-1 text-ui-xs opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 max-md:visible max-md:size-7 max-md:p-0 max-md:opacity-100"
       data-testid={providerId ? `set-default-provider-${providerId}` : undefined}
       disabled={disabled}
       aria-label={intl.formatMessage(
