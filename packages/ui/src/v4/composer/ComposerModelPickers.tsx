@@ -122,6 +122,7 @@ export function ComposerModelPickers({
         <ThoughtLevelCycleControl
           {...thoughtProps}
           showModelLabelInTrigger
+          modelLabel={modelProps.triggerLabelValue ?? modelProps.triggerLabel}
           emptyLabel={intl.formatMessage({ id: "chat.toolbar.model.label" })}
           onOpenChange={(open) => {
             if (!open) setModelOpen(false);

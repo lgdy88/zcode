@@ -554,6 +554,7 @@ export class ModelSelectionFacade {
           .map(projectModelSelectionProviderView),
       ),
       ...(initial.source === "none" ? {} : { preferredSelection: initial.selection }),
+      ...(normalizedDefault ? { configuredDefault: normalizedDefault } : {}),
       ...(input
         ? resolveEffectiveModelSelection({
             selection: input.selection,
