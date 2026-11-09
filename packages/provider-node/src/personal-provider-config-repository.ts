@@ -7,7 +7,13 @@ import {
   type ProviderConfigLayerSnapshot,
   type ProviderConfigLayerUpdate,
 } from "@zcode/provider";
+import type { DefaultReasoningEffort, ModelSelection } from "@zcode/provider";
 import { atomicWritePrivateTextFile, withFileLock } from "@zcode/shared/node";
+import {
+  readModelSelectionPreferences,
+  saveDefaultReasoningEffort as persistDefaultReasoningEffort,
+  saveProviderModelDefault as persistProviderModelDefault,
+} from "./provider-model-defaults.js";
 import {
   decodeProviderConfigFile,
   encodeProviderConfigFile,
@@ -92,6 +98,42 @@ export class NodePersonalProviderConfigRepository implements PersonalProviderCon
     } finally {
       this.#ensurePolling();
     }
+  }
+
+  async readProviderModelDefaults(): Promise<Readonly<Record<string, ModelSelection>>> {
+    this.#assertNotDisposed();
+    return (
+      await readModelSelectionPreferences(`${this.#filePath}.model-defaults.json`)
+    ).providerDefaults;
+  }
+
+  async readDefaultReasoningEffort(): Promise<DefaultReasoningEffort | undefined> {
+    this.#assertNotDisposed();
+    return (
+      await readModelSelectionPreferences(`${this.#filePath}.model-defaults.json`)
+    ).defaultReasoningEffort;
+  }
+
+  async saveDefaultReasoningEffort(effort: DefaultReasoningEffort): Promise<void> {
+    this.#assertNotDisposed();
+    const preferences = await persistDefaultReasoningEffort(
+      `${this.#filePath}.model-defaults.json`,
+      effort,
+    );
+    this.#emit("default-reasoning-effort");
+    this.#ensurePolling();
+    return preferences as never;
+  }
+
+  async saveProviderModelDefault(selection: ModelSelection): Promise<void> {
+    this.#assertNotDisposed();
+    const defaults = await persistProviderModelDefault(
+      `${this.#filePath}.model-defaults.json`,
+      selection,
+    );
+    this.#emit("provider-default-model");
+    this.#ensurePolling();
+    return defaults as never;
   }
 
   onDidChange(listener: (reason: string) => void): () => void {

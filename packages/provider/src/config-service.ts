@@ -41,6 +41,10 @@ export interface PersonalProviderConfigRepository extends ProviderSource<Provide
   update(
     transform: (current: ProviderConfigLayerSnapshot) => ProviderConfigLayerUpdate,
   ): Promise<ProviderConfigLayerSnapshot>;
+  /** 旁文件 provider_config.json.model-defaults.json 的可选能力；未装配时相关入口报错。 */
+  saveDefaultReasoningEffort?(effort: import("./default-reasoning-effort.js").DefaultReasoningEffort): Promise<void>;
+  readProviderModelDefaults?(): Promise<Readonly<Record<string, import("./registry.js").ModelSelection>>>;
+  saveProviderModelDefault?(selection: import("./registry.js").ModelSelection): Promise<void>;
 }
 
 export interface ProviderConfigServiceDependencies {

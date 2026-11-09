@@ -199,9 +199,13 @@ export interface ModelSelectionViewInput {
 }
 
 export interface ModelSelectionView extends Partial<EffectiveModelSelectionResult> {
+  readonly defaultReasoningEffort?: import("./default-reasoning-effort.js").DefaultReasoningEffort;
   readonly revision: number;
   readonly providers: readonly ModelSelectionProviderView[];
   readonly preferredSelection?: ModelSelection;
+  /** 用户保存的显式默认；与 Registry 的初始推荐区分，失效时仍保留原意图。 */
+  readonly configuredDefault?: ModelSelection;
+  readonly providerDefaults?: Readonly<Record<string, ModelSelection>>;
 }
 
 export class ProviderSettingsFacade {

@@ -1,8 +1,9 @@
 import type { Event } from "@zcode/rpc";
-import { ServiceChannels } from "@zcode/shared";
+import { ServiceChannels, modelSelectionSchema } from "@zcode/shared";
 import {
   type ModelConfigObject,
   type ModelId,
+  type DefaultReasoningEffort,
   type ModelSelection,
   type ModelSelectionFacade,
   type ModelSelectionView,
@@ -17,6 +18,7 @@ import {
   type SavePersonalModelDraftInput,
 } from "@zcode/provider";
 import { createServiceDescriptor } from "../descriptors.js";
+import { defaultReasoningEffortSchema } from "@zcode/provider";
 import type { ModelConnectivityResult } from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import type { ProviderUsageOperations } from "./providerUsage.js";
@@ -102,10 +104,20 @@ export type ProviderSettingsConnectivityTester = (
 export interface IModelSelectionService {
   readonly onDidChange: Event<ModelSelectionView>;
   getView(input?: ModelSelectionViewInput): Promise<ModelSelectionView>;
+  saveDefaultReasoningEffort(input: DefaultReasoningEffort): Promise<ModelSelectionView>;
+  saveProviderDefault(selection: ModelSelection): Promise<ModelSelectionView>;
+  saveConfiguredDefault(selection: ModelSelection): Promise<ModelSelectionView>;
 }
 
 export interface ModelSelectionConfiguredDefaultSource {
   read(): Promise<ModelSelection | undefined>;
+  readState?(): Promise<{
+    configuredDefault?: ModelSelection;
+    providerDefaults: Readonly<Record<string, ModelSelection>>;
+  }>;
+  saveDefaultReasoningEffort?(effort: DefaultReasoningEffort): Promise<void>;
+  saveProviderDefault?(selection: ModelSelection): Promise<void>;
+  saveConfiguredDefault?(selection: ModelSelection): Promise<ModelSelection | undefined>;
   onDidChange?(listener: () => void): () => void;
 }
 
@@ -269,6 +281,7 @@ export function createModelSelectionService(
   facade: ModelSelectionFacade,
   ensureReady: () => Promise<void> = async () => {},
   configuredDefaultSource?: ModelSelectionConfiguredDefaultSource,
+  refreshSelectionDefaults?: () => Promise<unknown>,
 ): IModelSelectionService & { dispose(): void } {
   const log = createServiceLogger("model-selection");
   let revision = 0;
@@ -277,11 +290,18 @@ export function createModelSelectionService(
   const getView = async (input?: ModelSelectionViewInput): Promise<ModelSelectionView> => {
     await ensureReady();
     if (disposed) throw new Error("ModelSelectionService 已 dispose");
-    const configuredDefault = await configuredDefaultSource?.read();
-    if (disposed) throw new Error("ModelSelectionService 已 dispose");
-    const base = facade.getView(configuredDefault);
+    // 默认设置会在异步读取期间变更；旧读取必须保留其起始 revision，不能冒充新回执。
+    const base = facade.getView();
     if (revision < base.revision) revision = base.revision;
-    return facade.getView(configuredDefault, revision, input);
+    const readRevision = revision;
+    const state = configuredDefaultSource?.readState
+      ? await configuredDefaultSource.readState()
+      : { configuredDefault: await configuredDefaultSource?.read(), providerDefaults: {} };
+    if (disposed) throw new Error("ModelSelectionService 已 dispose");
+    return {
+      ...facade.getView(state.configuredDefault, readRevision, input),
+      providerDefaults: state.providerDefaults,
+    };
   };
   const emit = (): void => {
     if (disposed) return;
@@ -303,12 +323,54 @@ export function createModelSelectionService(
   const disposeFacade = facade.onDidChange(emit);
   const disposeConfiguredDefault = configuredDefaultSource?.onDidChange?.(emit);
 
+  const validateDefault = async (input: ModelSelection): Promise<ModelSelection> => {
+    const selection = modelSelectionSchema.parse(input);
+    const current = await getView({ selection });
+    // 只接受当前公开可选择的模型，不能将隐藏或失效条目设为新默认。
+    const model = current.providers
+      .find((provider) => provider.providerId === selection.providerId)
+      ?.models.find((item) => item.modelId === selection.modelId);
+    if (
+      !model ||
+      current.selectionIssue ||
+      current.effectiveSelection?.providerId !== selection.providerId ||
+      current.effectiveSelection?.modelId !== selection.modelId
+    )
+      throw new Error("默认供应商或模型当前不可用");
+    return selection;
+  };
+
   return {
     onDidChange: (listener) => {
       listeners.add(listener);
       return { dispose: () => listeners.delete(listener) };
     },
     getView,
+    saveDefaultReasoningEffort: async (input) => {
+      const effort = defaultReasoningEffortSchema.parse(input);
+      await ensureReady();
+      if (!configuredDefaultSource?.saveDefaultReasoningEffort)
+        throw new Error("当前 Environment 未装配通用思考强度设置能力");
+      await configuredDefaultSource.saveDefaultReasoningEffort(effort);
+      // 等 Registry 发布保存后的版本，不能用旧默认值冒充保存成功回执。
+      await refreshSelectionDefaults?.();
+      return getView();
+    },
+    saveProviderDefault: async (input) => {
+      const selection = await validateDefault(input);
+      if (!configuredDefaultSource?.saveProviderDefault)
+        throw new Error("当前 Environment 未装配独立默认模型设置能力");
+      await configuredDefaultSource.saveProviderDefault(selection);
+      return getView();
+    },
+    saveConfiguredDefault: async (input) => {
+      const selection = await validateDefault(input);
+      if (!configuredDefaultSource?.saveConfiguredDefault) {
+        throw new Error("当前 Environment 未装配默认模型设置能力");
+      }
+      await configuredDefaultSource.saveConfiguredDefault(selection);
+      return getView();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;

@@ -4,6 +4,8 @@ import type { ModelProviderNavGroup } from "@/settings/model-provider-section/co
 import { ModelProviderSectionNavigation } from "@/settings/model-provider-section/Navigation.js";
 import { ProviderDetailFeedbackBoundary } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
 import { SettingsResourceHeaderActions } from "@/settings/SettingsResourceHeaderActions.js";
+import { DefaultReasoningControl } from "./DefaultReasoningControl.js";
+import type { DefaultModelProviderActions } from "@/hooks/useDefaultModelProvider.js";
 
 interface ModelProviderSectionLayoutProps {
   description: string;
@@ -19,6 +21,8 @@ interface ModelProviderSectionLayoutProps {
   onSelectNavItem: (item: ModelProviderNavGroup["items"][number]) => void;
   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
   reorderableProviderIds?: ReadonlySet<string>;
+  /** 默认供应商/模型/思考强度的一份 actions；设置页唯一订阅。 */
+  defaultProviderActions?: DefaultModelProviderActions;
   children: ReactNode;
 }
 
@@ -38,6 +42,7 @@ export function ModelProviderSectionLayout({
   onRefresh,
   addProviderLabel,
   onAddProvider,
+  defaultProviderActions,
   navigationGroups,
   selectedNodeKey,
   onSelectNavItem,
@@ -55,6 +60,9 @@ export function ModelProviderSectionLayout({
       <div className="flex items-start justify-between gap-3">
         <p className="text-ui-base leading-6 text-foreground-subtle">{description}</p>
         <SettingsResourceHeaderActions
+          beforeNew={
+            defaultProviderActions ? <DefaultReasoningControl actions={defaultProviderActions} /> : undefined
+          }
           onRefresh={onRefresh}
           onNew={onAddProvider}
           refreshing={refreshButtonLoading}
@@ -75,6 +83,7 @@ export function ModelProviderSectionLayout({
           >
             <ModelProviderSectionNavigation
               navigationGroups={navigationGroups}
+          defaultProviderActions={defaultProviderActions}
               selectedNodeKey={selectedNodeKey}
               presetLoading={presetLoading}
               customLoading={customLoading}

@@ -8,6 +8,7 @@ export * from "./facades.js";
 export * from "./effective-model-selection.js";
 export * from "./model-reasoning.js";
 export * from "./model-selection-config.js";
+export * from "./default-reasoning-effort.js";
 export * from "./model-discovery.js";
 export * from "./owned-order.js";
 export * from "./provider-usage.js";

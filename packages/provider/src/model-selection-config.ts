@@ -1,3 +1,15 @@
+import type {
+  ModelId,
+  ProviderId,
+  ProviderConfigObject,
+  ProviderConfigRule,
+} from "./config/index.js";
+import type { RegistryModelConfigObject } from "./resolver.js";
+import type { EffectiveModelSelectionResult } from "./effective-model-selection.js";
+import {
+  resolveDefaultReasoningLevel,
+  type DefaultReasoningEffort,
+} from "./default-reasoning-effort.js";
 import {
   validateModelSelectionOptions,
   type ModelSelection,
@@ -12,6 +24,7 @@ export type InitialModelSelectionResolution =
   | { readonly source: "none" };
 
 interface ModelSelectionCompletionView {
+  readonly defaultReasoningEffort?: DefaultReasoningEffort;
   readonly providers: readonly {
     readonly providerId: string;
     readonly models: readonly {
@@ -31,11 +44,12 @@ export function resolveInitialModelSelection(input: {
 }): InitialModelSelectionResolution {
   // 这里只构造 Host 的初始推荐，不解析已有会话意图。失效默认是可丢弃偏好，
   // 应继续按 Registry 顺序推荐；不能把历史选择留空的规则误用于新草稿初始化。
-  if (input.configuredDefault) {
-    if (isSelectable(input.registry, input.configuredDefault)) {
+  const configuredDefault = completeConfiguredDefault(input.registry, input.configuredDefault);
+  if (configuredDefault) {
+    if (isSelectable(input.registry, configuredDefault)) {
       return {
         source: "configured-default",
-        selection: freezeSelection(input.configuredDefault),
+        selection: freezeSelection(completeNewModelSelection(input.registry, configuredDefault)!),
       };
     }
   }
@@ -54,21 +68,40 @@ export function resolveInitialModelSelection(input: {
   return { source: "none" };
 }
 
-/** 仅在用户主动选模型或全新初始化时构造最高档；不能用于恢复/重解析已有选择。 */
+/** 仅在主动选模型或全新初始化时应用通用偏好；恢复已有会话不能调用此入口。 */
 export function completeNewModelSelection(
   registry: ModelSelectionCompletionView,
   selection: ModelSelection,
 ): ModelSelection | undefined {
-  const model = registry.providers
-    .find((provider) => provider.providerId === selection.providerId)
-    ?.models.find((candidate) => candidate.modelId === selection.modelId);
-  const reasoningLevel = model?.config.optionSpecs.reasoningLevel.values.at(-1);
+  const models = registry.providers.find(
+    (provider) => provider.providerId === selection.providerId,
+  )?.models;
+  const model =
+    models?.find((candidate) => candidate.modelId === selection.modelId) ??
+    (selection.selectionMode === "auto" ? models?.[0] : undefined);
+  const reasoningLevel = resolveDefaultReasoningLevel(
+    model?.config.optionSpecs.reasoningLevel.values ?? [],
+    registry.defaultReasoningEffort,
+  );
   if (!reasoningLevel) return undefined;
   return {
     providerId: selection.providerId,
-    modelId: selection.modelId,
+    modelId: model!.modelId,
+    ...(selection.selectionMode ? { selectionMode: selection.selectionMode } : {}),
     options: { reasoningLevel },
   };
+}
+
+/** 旧 CLI 只保存模型身份；仅新任务默认补缺失档位，不修正显式失效选项。 */
+export function completeConfiguredDefault(
+  registry: ModelSelectionCompletionView,
+  selection?: ModelSelection,
+): ModelSelection | undefined {
+  if (!selection || selection.options?.reasoningLevel !== undefined) return selection;
+  const completed = completeNewModelSelection(registry, selection);
+  return completed
+    ? { ...selection, options: { ...selection.options, ...completed.options } }
+    : selection;
 }
 
 /**
@@ -80,6 +113,19 @@ export function normalizeModelSelection(
   registry: ModelSelectionCompletionView,
   selection: ModelSelection,
 ): ModelSelection | undefined {
+  if (selection.selectionMode === "auto") {
+    const completed = completeNewModelSelection(registry, selection);
+    if (!completed) return undefined;
+    const model = registry.providers
+      .find((p) => p.providerId === completed.providerId)
+      ?.models.find((m) => m.modelId === completed.modelId);
+    // Auto 也允许用户手动选档位；仅目标模型不支持原值时使用通用默认。
+    return model &&
+      selection.options?.reasoningLevel &&
+      model.config.optionSpecs.reasoningLevel.values.includes(selection.options.reasoningLevel)
+      ? { ...completed, options: { ...selection.options } }
+      : completed;
+  }
   const model = registry.providers
     .find((provider) => provider.providerId === selection.providerId)
     ?.models.find((candidate) => candidate.modelId === selection.modelId);
@@ -107,6 +153,7 @@ function freezeSelection(selection: ModelSelection): ModelSelection {
   return Object.freeze({
     providerId: selection.providerId,
     modelId: selection.modelId,
+    ...(selection.selectionMode ? { selectionMode: selection.selectionMode } : {}),
     ...(selection.options ? { options: Object.freeze({ ...selection.options }) } : {}),
   });
 }

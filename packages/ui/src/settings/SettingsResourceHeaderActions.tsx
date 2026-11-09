@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dropdown-menu.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 
+import type { ReactNode } from "react";
+
 interface SettingsResourceHeaderActionsProps {
   onRefresh?: () => void;
   onImport?: () => void;
@@ -33,6 +35,8 @@ interface SettingsResourceHeaderActionsProps {
   importActionId?: string;
   exportActionId?: string;
   newActionId?: string;
+  /** 渲染在「新建」按钮左侧的自定义动作（如默认思考强度下拉）。 */
+  beforeNew?: ReactNode;
 }
 
 export function SettingsResourceHeaderActions({
@@ -40,6 +44,7 @@ export function SettingsResourceHeaderActions({
   onImport,
   onExport,
   onNew,
+  beforeNew,
   refreshing = false,
   refreshDisabled = false,
   importDisabled = false,
@@ -120,7 +125,9 @@ export function SettingsResourceHeaderActions({
         </ControlHintTooltip>
       ) : null}
       {onNew ? (
-        <Button
+        <>
+          {beforeNew}
+          <Button
           type="button"
           variant="default"
           size="default"
@@ -133,7 +140,8 @@ export function SettingsResourceHeaderActions({
         >
           <Plus data-icon="inline-start" aria-hidden="true" />
           {newLabel}
-        </Button>
+          </Button>
+        </>
       ) : null}
     </div>
   );

@@ -145,6 +145,7 @@ export class ProviderRuntime {
       createNodeModelSelectionFacade(this.registryService),
       ensureReady,
       dependencies.modelSelectionConfiguredDefaultSource,
+      () => this.registryService.refresh("default-reasoning-effort"),
     );
     this.modelSelection = this.#modelSelectionRuntime;
   }

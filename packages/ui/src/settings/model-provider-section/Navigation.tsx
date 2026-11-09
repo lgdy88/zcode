@@ -19,6 +19,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Loader2Icon } from "lucide-react";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
+import { ProviderDefaultButton } from "./ProviderDefaultButton.js";
+import type { DefaultModelProviderActions } from "@/hooks/useDefaultModelProvider.js";
 
 import {
   resolveModelProviderFamilySpecByProviderId,
@@ -86,22 +88,36 @@ function ModelProviderNavigationButton({
   selectedNodeKey,
   onSelectNavItem,
   showIcon = true,
+  defaultProviderActions,
 }: {
   item: ModelProviderNavItem;
   label: string;
   selectedNodeKey: string | null;
   onSelectNavItem: (item: ModelProviderNavItem) => void;
   showIcon?: boolean;
+  defaultProviderActions?: DefaultModelProviderActions;
 }) {
   const isSelected = item.key === selectedNodeKey;
   const isLoadingItem = item.type === "codingPlanLoading";
   const inactiveItemClassName = "border-transparent text-foreground hover:border-border-hover/60";
+  const hasDefaultAction = item.type !== "codingPlanLoading";
+  const defaultProviderId =
+    item.type === "preset"
+      ? item.statusProvider?.providerId
+      : item.type === "custom"
+        ? item.provider.providerId
+        : item.type !== "codingPlanLoading"
+          ? item.presetId
+          : undefined;
+  // 内置行也有独立默认操作；品牌入口须绑定当前连接，不能误用历史 Start ID。
+  const SelectionElement = hasDefaultAction ? "div" : "button";
 
   return (
     <ControlHintTooltip title={label} side="right">
-      <button
-        type="button"
-        disabled={isLoadingItem}
+      <SelectionElement
+        {...(hasDefaultAction
+          ? { role: "button", tabIndex: 0 }
+          : { type: "button" as const, disabled: isLoadingItem })}
         aria-label={label}
         aria-selected={isSelected}
         data-state={isSelected ? "selected" : "idle"}
@@ -112,7 +128,15 @@ function ModelProviderNavigationButton({
           }
           onSelectNavItem(item);
         }}
-        className={`relative box-border flex h-8 w-full items-center gap-2 rounded-lg border px-2 py-1 text-left text-ui-base font-medium transition-colors max-md:size-8 max-md:justify-center max-md:gap-0 max-md:px-0 ${
+        onKeyDown={(event) => {
+          if (hasDefaultAction)
+            handleModelProviderNavigationRowKeyDown({
+            event: event as KeyboardEvent<HTMLDivElement>,
+            item,
+            onSelectNavItem,
+          });
+        }}
+        className={`group relative box-border flex h-8 w-full items-center gap-2 rounded-lg border px-2 py-1 text-left text-ui-base font-medium transition-colors ${hasDefaultAction ? "max-md:w-full max-md:gap-1 max-md:px-1" : "max-md:size-8 max-md:justify-center max-md:gap-0 max-md:px-0"} ${
           isSelected
             ? "border-border-hover bg-card-selected text-foreground"
             : inactiveItemClassName
@@ -126,12 +150,19 @@ function ModelProviderNavigationButton({
         <span className="flex min-w-0 flex-1 items-center gap-1.5 max-md:sr-only">
           <span className="min-w-0 truncate">{label}</span>
         </span>
+        {hasDefaultAction && (item.type !== "custom" || item.provider.enabled) && (
+          <ProviderDefaultButton
+            providerId={defaultProviderId}
+            providerName={label}
+            actions={defaultProviderActions}
+          />
+        )}
         {"provider" in item ? (
           <ProviderStatusIndicator
             provider={item.type === "preset" ? item.statusProvider : item.provider}
           />
         ) : null}
-      </button>
+      </SelectionElement>
     </ControlHintTooltip>
   );
 }
@@ -159,12 +190,14 @@ function SortableModelProviderNavigationButton({
   label,
   selectedNodeKey,
   onSelectNavItem,
+  defaultProviderActions,
 }: {
   providerId: string;
   item: ModelProviderNavItem;
   label: string;
   selectedNodeKey: string | null;
   onSelectNavItem: (item: ModelProviderNavItem) => void;
+  defaultProviderActions?: DefaultModelProviderActions;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: providerId,
@@ -206,6 +239,13 @@ function SortableModelProviderNavigationButton({
         <span className="flex min-w-0 flex-1 items-center gap-1.5 max-md:sr-only">
           <span className="min-w-0 truncate">{label}</span>
         </span>
+        {item.type === "custom" && item.provider.enabled && (
+          <ProviderDefaultButton
+            providerId={item.provider.providerId}
+            providerName={label}
+            actions={defaultProviderActions}
+          />
+        )}
         {"provider" in item ? (
           <ProviderStatusIndicator
             provider={item.type === "preset" ? item.statusProvider : item.provider}
@@ -220,10 +260,12 @@ function PresetProviderCardNavigation({
   group,
   selectedNodeKey,
   onSelectNavItem,
+  defaultProviderActions,
 }: {
   group: ModelProviderNavGroup;
   selectedNodeKey: string | null;
   onSelectNavItem: (item: ModelProviderNavItem) => void;
+  defaultProviderActions?: DefaultModelProviderActions;
 }) {
   return (
     <div className="flex flex-col gap-2 max-md:items-center max-md:gap-1">
@@ -234,6 +276,7 @@ function PresetProviderCardNavigation({
           label={resolveModelProviderSideNavLabel(item)}
           selectedNodeKey={selectedNodeKey}
           onSelectNavItem={onSelectNavItem}
+          defaultProviderActions={defaultProviderActions}
         />
       ))}
     </div>
@@ -246,12 +289,14 @@ function SortableProviderNavigationGroup({
   onSelectNavItem,
   onReorderProviderIds,
   reorderableProviderIds,
+  defaultProviderActions,
   sensors,
 }: {
   group: ModelProviderNavGroup;
   selectedNodeKey: string | null;
   onSelectNavItem: (item: ModelProviderNavItem) => void;
   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
+  defaultProviderActions?: DefaultModelProviderActions;
   reorderableProviderIds?: ReadonlySet<string>;
   sensors: ReturnType<typeof useSensors>;
 }) {
@@ -326,6 +371,7 @@ function SortableProviderNavigationGroup({
                 label={item.label}
                 selectedNodeKey={selectedNodeKey}
                 onSelectNavItem={onSelectNavItem}
+                defaultProviderActions={defaultProviderActions}
               />
             );
           })}
@@ -366,6 +412,7 @@ export function ModelProviderSectionNavigation({
   onSelectNavItem,
   onReorderProviderIds,
   reorderableProviderIds,
+  defaultProviderActions,
 }: {
   navigationGroups: ModelProviderNavGroup[];
   selectedNodeKey: string | null;
@@ -373,6 +420,7 @@ export function ModelProviderSectionNavigation({
   customLoading: boolean;
   onSelectNavItem: (item: ModelProviderNavItem) => void;
   onReorderProviderIds?: (providerIds: string[]) => Promise<void>;
+  defaultProviderActions?: DefaultModelProviderActions;
   reorderableProviderIds?: ReadonlySet<string>;
 }) {
   const sensors = useSensors(
@@ -402,12 +450,14 @@ export function ModelProviderSectionNavigation({
 
               {group.id === "preset" ? (
                 <PresetProviderCardNavigation
+          defaultProviderActions={defaultProviderActions}
                   group={group}
                   selectedNodeKey={selectedNodeKey}
                   onSelectNavItem={onSelectNavItem}
                 />
               ) : (
                 <SortableProviderNavigationGroup
+            defaultProviderActions={defaultProviderActions}
                   group={group}
                   selectedNodeKey={selectedNodeKey}
                   onSelectNavItem={onSelectNavItem}

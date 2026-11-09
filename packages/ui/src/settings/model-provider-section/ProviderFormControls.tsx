@@ -12,6 +12,7 @@ import { formatModelContextWindowLabel } from "@/lib/tokenNumberFormat.js";
 import type { ModelConfigResolution, ProviderConfigObject } from "@zcode/provider";
 import { shouldShowModelVisionBadge } from "@/lib/modelVisionBadge.js";
 import { useProviderDetailFeedback } from "@/settings/model-provider-section/ProviderDetailFeedback.js";
+import { ModelDefaultButton } from "./ModelDefaultButton.js";
 
 export function ModelRowInput({
   model,
@@ -243,7 +244,7 @@ export function ModelRowInput({
   );
 
   return (
-    <div className="space-y-2 px-3 py-2">
+    <div className="group/model space-y-2 px-3 py-2">
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
@@ -267,6 +268,13 @@ export function ModelRowInput({
             <ModelInputCapabilityBadge />
           ) : null}
         </div>
+        {shouldShowTestButton ? (
+          <ModelDefaultButton
+            providerId={providerId}
+            modelId={model.modelId}
+            enabled={providerEnabled && model.config.enabled !== false}
+          />
+        ) : null}
         {shouldShowTestButton ? (
           <Button
             type="button"

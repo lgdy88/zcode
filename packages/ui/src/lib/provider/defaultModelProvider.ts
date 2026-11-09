@@ -1,5 +1,8 @@
 import type { ModelSelectionView } from "@zcode/services";
-import { completeNewModelSelection, validateModelSelectionOptions } from "@zcode/provider";
+import {
+  completeNewModelSelection,
+  validateModelSelectionOptions,
+} from "@zcode/provider";
 
 /**
  * 解析某供应商下第一个可执行的默认选择，供侧边栏供应商徽章一键切换使用。
@@ -29,4 +32,19 @@ export function resolveDefaultProviderSelection(
     }
   }
   return undefined;
+}
+
+/** 指定供应商内指定模型的默认选择；模型不存在于该供应商时返回 undefined。 */
+export function resolveDefaultModelSelection(
+  view: ModelSelectionView | null,
+  providerId: string,
+  modelId: string,
+) {
+  if (
+    !view?.providers
+      .find((provider) => provider.providerId === providerId)
+      ?.models.some((model) => model.modelId === modelId)
+  )
+    return undefined;
+  return completeNewModelSelection(view, { providerId, modelId }) ?? undefined;
 }

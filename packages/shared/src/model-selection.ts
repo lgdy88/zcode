@@ -5,6 +5,8 @@ export const modelSelectionSchema = z
   .object({
     providerId: z.string().trim().min(1),
     modelId: z.string().trim().min(1),
+    /** 会话意图；执行边界将 Auto 解析成具体模型，供应商请求不接收此字段。 */
+    selectionMode: z.literal("auto").optional(),
     options: z
       .object({
         reasoningLevel: z.string().trim().min(1).optional(),

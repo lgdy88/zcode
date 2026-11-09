@@ -40,6 +40,8 @@ import {
 } from "./model-provider-section/constants.js";
 import { ModelProviderSectionDetail } from "./model-provider-section/Detail.js";
 import { ModelProviderSectionLayout } from "./model-provider-section/SectionLayout.js";
+import { useDefaultModelProvider } from "@/hooks/useDefaultModelProvider.js";
+import { DefaultModelActionsContext } from "./model-provider-section/DefaultModelActionsContext.js";
 import { ProviderTemplatePicker } from "./model-provider-section/ProviderTemplatePicker.js";
 import type { CodingPlanLoginOptions } from "./model-provider-section/codingPlanPricingCards.js";
 import { useModelProviderNavigation } from "./model-provider-section/useModelProviderNavigation.js";
@@ -1101,8 +1103,11 @@ export function ModelProviderSection({
       </div>
     );
   }
+  const defaultProviderActions = useDefaultModelProvider();
+
 
   return (
+    <DefaultModelActionsContext.Provider value={defaultProviderActions}>
     <ModelProviderSectionLayout
       description={intl.formatMessage({ id: "settings.modelProviderDescription" })}
       refreshLabel={intl.formatMessage({ id: "settings.modelProvider.refresh" })}
@@ -1121,6 +1126,7 @@ export function ModelProviderSection({
       addProviderLabel={intl.formatMessage({ id: "settings.modelProvider.addProviderAction" })}
       onAddProvider={() => setTemplatePickerOpen(true)}
       navigationGroups={navigationGroups}
+      defaultProviderActions={defaultProviderActions}
       selectedNodeKey={selectedNodeKey}
       onSelectNavItem={handleSelectNavItem}
       onReorderProviderIds={handleReorderProviderIds}
@@ -1209,5 +1215,6 @@ export function ModelProviderSection({
         />
       )}
     </ModelProviderSectionLayout>
+    </DefaultModelActionsContext.Provider>
   );
 }
