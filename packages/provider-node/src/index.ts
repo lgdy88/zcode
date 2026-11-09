@@ -11,5 +11,7 @@ export * from "./provider-config-file-codec.js";
 export * from "./provider-config-runtime.js";
 export * from "./provider-registry-runtime.js";
 export * from "./model-discovery-fetcher.js";
+export * from "./model-capability-cache.js";
+export * from "./models-dev-reasoning-catalog.js";
 export * from "./model-selection-facade.js";
 export * from "./runtime-paths.js";

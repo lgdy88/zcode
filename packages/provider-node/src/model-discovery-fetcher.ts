@@ -6,9 +6,37 @@ import type {
   ProviderModelDiscoveryResult,
 } from "@zcode/provider";
 import { providerReasoningMetadata } from "@zcode/provider";
+import { resolveModelsDevReasoning } from "./models-dev-reasoning-catalog.js";
 
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_PAGES = 100;
+const MODELS_DEV_ENDPOINT = "https://models.dev/api.json";
+const MODELS_DEV_TTL_MS = 24 * 60 * 60 * 1000;
+/** 进程级目录缓存；拉取失败不阻塞发现主流程，沿用上次目录直到过期重试。 */
+let modelsDevCache: { catalog: Record<string, unknown>; fetchedAt: number } | null = null;
+
+async function loadModelsDevCatalog(fetchImpl: typeof fetch): Promise<Record<string, unknown> | null> {
+  if (modelsDevCache && Date.now() - modelsDevCache.fetchedAt < MODELS_DEV_TTL_MS) {
+    return modelsDevCache.catalog;
+  }
+  try {
+    const response = await fetchImpl(MODELS_DEV_ENDPOINT, {
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return modelsDevCache?.catalog ?? null;
+    }
+    const catalog = await readBoundedModelJson(response, 4 * 1024 * 1024);
+    if (catalog && typeof catalog === "object" && !Array.isArray(catalog)) {
+      modelsDevCache = { catalog: catalog as Record<string, unknown>, fetchedAt: Date.now() };
+    }
+  } catch {
+    // 目录拉取失败仅影响推理标注来源，不影响模型发现本身。
+  }
+  return modelsDevCache?.catalog ?? null;
+}
 const failure = (code: ProviderModelDiscoveryErrorCode): ProviderModelDiscoveryResult => ({
   success: false,
   error: { code },
@@ -160,11 +188,27 @@ export function createProviderModelDiscoveryFetcher(
         ]);
         if (!page) return failure("invalid-response");
         for (const model of page.models) if (!all.has(model.id)) all.set(model.id, model);
-        if (!page.hasMore)
+        if (!page.hasMore) {
+          // 供应商未声明推理的模型：用 models.dev 目录补全思考档位（来源标注 models-dev）。
+          const catalog = await loadModelsDevCatalog(fetchImpl);
+          const models = [...all.values()].map((model) =>
+            model.reasoning === undefined || model.reasoning.status === "unknown"
+              ? (() => {
+                  const inferred = resolveModelsDevReasoning(
+                    catalog ?? {},
+                    config.api?.baseUrl ?? "",
+                    model.id,
+                    model.ownedBy,
+                  );
+                  return inferred.status === "known" ? { ...model, reasoning: inferred } : model;
+                })()
+              : model,
+          );
           return {
             success: true,
-            models: [...all.values()].sort((a, b) => a.id.localeCompare(b.id)),
+            models: models.sort((a, b) => a.id.localeCompare(b.id)),
           };
+        }
         if (!page.cursor || cursors.has(page.cursor)) return failure("invalid-response");
         cursors.add(page.cursor);
         endpoint.searchParams.set("after_id", page.cursor);
